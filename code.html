@@ -1,0 +1,1669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>ChronoTune AI: Real-Time Mood Music Recommender</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@latest/dist/face-api.min.js"></script>
+
+    <style>
+        /* BASE STYLES & TYPOGRAPHY */
+        :root {
+            --primary-color: #2980b9;
+            --secondary-color: #e67e22;
+            --background-light: #f4f7f6;
+            --background-dark: #1a5276;
+            --text-dark: #333;
+            --text-light: white;
+            --card-bg: white;
+            --current-bg: var(--background-light);
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--current-bg);
+            color: var(--text-dark);
+            line-height: 1.6;
+            overflow-x: hidden;
+            transition: background-color 1.5s ease;
+        }
+
+        .hidden { display: none !important; }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(41, 128, 185, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(41, 128, 185, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(41, 128, 185, 0); }
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translate3d(0, -20px, 0); }
+            to { opacity: 1; transform: translate3d(0, 0, 0); }
+        }
+
+        header {
+            background-color: var(--background-dark);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        #header-info {
+            background-color: var(--background-dark);
+            color: var(--text-light);
+            padding-bottom: 10px;
+            position: relative;
+        }
+        header h1 {
+            margin: 0;
+            font-weight: 900;
+            animation: fadeInDown 0.8s ease-out;
+            color: var(--text-light);
+            padding: 10px 0 5px;
+        }
+
+        #logout-button {
+            background-color: #c0392b;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s;
+            text-transform: uppercase;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            z-index: 50;
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            margin-bottom: 80px;
+        }
+
+        main.show { opacity: 1; }
+
+        h2 {
+            color: var(--primary-color);
+            border-bottom: 3px solid var(--primary-color);
+            padding-bottom: 10px;
+            margin-top: 40px;
+            font-weight: 600;
+        }
+
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 20px auto;
+            border: 5px solid var(--primary-color);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            aspect-ratio: 4/3;
+            animation: pulse-ring 2s infinite;
+        }
+
+        #video-stream, #detection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        #loading-status {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: var(--secondary-color);
+            margin-top: 15px;
+            transition: color 0.5s;
+        }
+
+        #loading-status::before {
+            content: "";
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: var(--secondary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        #loading-status.loaded::before {
+            content: "✅";
+            border: none;
+            width: auto;
+            height: auto;
+            animation: none;
+        }
+
+        #current-emotion {
+            font-size: 2.2em;
+            font-weight: 900;
+            display: inline-block;
+            transition: color 0.5s, transform 0.3s;
+        }
+
+        #results-container {
+            background-color: var(--card-bg);
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 30px;
+            min-height: 150px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            transition: all 0.5s;
+        }
+        .song-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 25px;
+            background-color: #ecf0f1;
+            border-left: 8px solid var(--secondary-color);
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .vibe-tag {
+            color: var(--text-light);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 15px;
+            text-transform: uppercase;
+        }
+        .song-link a {
+            text-decoration: none;
+            background-color: var(--secondary-color);
+            color: var(--text-light);
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-weight: bold;
+        }
+
+        .app-nav-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: var(--background-dark);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .nav-item {
+            color: var(--text-light);
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: color 0.3s;
+            padding: 5px 10px;
+            white-space: nowrap;
+        }
+        .header-search-container {
+             flex-grow: 1;
+             display: flex;
+             justify-content: center;
+             padding: 0 10px;
+        }
+        .header-search-container input {
+            flex-grow: 1;
+            max-width: 300px;
+            padding: 8px 15px;
+            border-radius: 8px 0 0 8px;
+            border: none;
+            outline: none;
+        }
+        .header-search-container button {
+             background-color: #27ae60;
+             color: white;
+             border: none;
+             padding: 8px 15px;
+             border-radius: 0 8px 8px 0;
+             cursor: pointer;
+        }
+
+        .emotion-select-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: flex-start;
+            margin-top: 18px;
+            flex-wrap: wrap;
+        }
+        .emotion-select {
+            background: linear-gradient(180deg,#ffffff,#f2f6f8);
+            border: 2px solid rgba(0,0,0,0.08);
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            box-shadow: 0 6px 18px rgba(9,30,66,0.06);
+            outline: none;
+            cursor: pointer;
+        }
+        .play-mood-btn {
+            background-color: #8e44ad;
+            color: #fff;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 800;
+            box-shadow: 0 6px 18px rgba(142,68,173,0.16);
+        }
+        .play-mood-btn:hover { transform: translateY(-1px); }
+
+        .resume-detect-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        #login-page, #language-selection-page {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--background-dark) 0%, var(--primary-color) 100%);
+            color: var(--text-light);
+            text-align: center;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .login-card {
+            background-color: var(--card-bg);
+            color: var(--text-dark);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            max-width: 450px;
+            width: 100%;
+        }
+
+        .social-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            font-weight: 600;
+            border: none;
+            width: 100%;
+        }
+        #google-login { background-color: #dd4b39; color: white; }
+        #facebook-login { background-color: #3b5998; color: white; }
+        #phone-login { background-color: #27ae60; color: white; }
+
+        .divider {
+            margin: 25px 0;
+            font-weight: 600;
+            color: #7f8c8d;
+        }
+
+        .language-selection-area { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 10px; background-color: #f9f9f9; }
+        .language-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 15px; }
+        .lang-button { padding: 10px 15px; border: 2px solid transparent; border-radius: 8px; cursor: pointer; font-weight: 700; flex-grow: 1; min-width: 100px; }
+        .lang-button.selected { border-color: #2c3e50; }
+        .lang-kannada { background-color: #f39c12; color: white; }
+        .lang-hindi { background-color: #3498db; color: white; }
+        .lang-malayalam { background-color: #2ecc71; color: white; }
+        .lang-tamil { background-color: #e74c3c; color: white; }
+        .lang-telugu { background-color: #9b59b6; color: white; }
+        .lang-bengali { background-color: #1abc9c; color: white; }
+        .lang-assamese { background-color: #d35400; color: white; }
+        .lang-gujarathi { background-color: #34495e; color: white; }
+        #proceed-button { background-color: var(--primary-color); color: white; border: none; padding: 12px 25px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; margin-top: 15px; }
+
+        .bottom-feature-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: var(--background-dark);
+            color: white;
+            display: flex;
+            justify-content: space-around;
+            padding: 15px 0;
+            box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+        .feature-button {
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            transition: color 0.3s;
+            font-size: 0.9em;
+            padding: 0 5px;
+        }
+        .feature-button i {
+            font-size: 1.5em;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 15px;
+            background-color: var(--background-dark);
+            color: #95a5a6;
+            font-size: 0.9em;
+            margin-top: 50px;
+        }
+
+        .modal {
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInDown 0.5s ease-out;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            max-width: 90%;
+            width: 400px;
+            position: relative;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-content h3 {
+            color: var(--primary-color);
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .menu-item {
+            display: block;
+            padding: 15px;
+            margin-bottom: 10px;
+            background-color: #f4f4f4;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+            text-align: left;
+        }
+        .menu-item i {
+            margin-right: 15px;
+            color: var(--primary-color);
+        }
+
+        .plan-card {
+            border: 2px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+        .plan-card.selected-plan {
+            border-color: var(--secondary-color);
+            background-color: #fffaf0;
+            box-shadow: 0 0 10px rgba(230, 126, 34, 0.3);
+        }
+        .plan-card h4 {
+            margin: 0 0 5px 0;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        #premium-cta {
+            background-color: var(--secondary-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            width: 100%;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .payment-method-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .payment-button {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            color: white;
+            border: none;
+        }
+        #phonepe-pay { background-color: #6739B7; }
+        #gpay-pay { background-color: #4285F4; }
+        #paytm-pay { background-color: #00B9F1; }
+        #payment-details {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .cancel-premium-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 800;
+            margin-top: 8px;
+            width: 100%;
+        }
+
+        @media (max-width: 640px) {
+            .header-search-container input { max-width: 160px; }
+            .emotion-select-container { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <section id="login-page">
+        <div class="login-card">
+            <h2>Welcome to ChronoTune AI 🤖</h2>
+            <p>Please sign in to start your personalized real-time music journey.</p>
+
+            <button id="google-login" class="social-button" onclick="handleGoogleLogin()">
+                <i class="fab fa-google"></i> Login with Google
+            </button>
+
+            <button id="facebook-login" class="social-button" onclick="handleFacebookLogin()">
+                <i class="fab fa-facebook-f"></i> Login with Facebook
+            </button>
+
+            <button id="phone-login" class="social-button" onclick="handlePhoneLogin()">
+                <i class="fas fa-phone"></i> Login with Phone Number
+            </button>
+
+            <div class="divider">OR</div>
+
+            <button class="social-button" style="background-color: var(--primary-color); color: white;" onclick="showLanguageSelection('Guest')">
+                <i class="fas fa-user-secret"></i> Continue as Guest
+            </button>
+
+            <p class="disclaimer">Note: Logins are mocked for a client-side demonstration.</p>
+        </div>
+    </section>
+
+    <section id="language-selection-page" class="hidden">
+        <div class="login-card" style="max-width: 600px;">
+            <h2>Choose Your Vibe Languages 🎶</h2>
+            <p>Select your preferred regional languages for personalized music recommendations:</p>
+
+            <div class="language-selection-area">
+                <div class="language-grid">
+                    <button class="lang-button lang-kannada" data-lang="Kannada" onclick="toggleLanguage(this)">ಕನ್ನಡ (Kannada)</button>
+                    <button class="lang-button lang-hindi" data-lang="Hindi" onclick="toggleLanguage(this)">हिन्दी (Hindi)</button>
+                    <button class="lang-button lang-malayalam" data-lang="Malayalam" onclick="toggleLanguage(this)">മലയാളം (Malayalam)</button>
+                    <button class="lang-button lang-tamil" data-lang="Tamil" onclick="toggleLanguage(this)">தமிழ் (Tamil)</button>
+                    <button class="lang-button lang-telugu" data-lang="Telugu" onclick="toggleLanguage(this)">తెలుగు (Telugu)</button>
+                    <button class="lang-button lang-bengali" data-lang="Bengali" onclick="toggleLanguage(this)">বাংলা (Bengali)</button>
+                    <button class="lang-button lang-assamese" data-lang="Assamese" onclick="toggleLanguage(this)">অসমীয়া (Assamese)</button>
+                    <button class="lang-button lang-gujarathi" data-lang="Gujarati" onclick="toggleLanguage(this)">ગુજરાતી (Gujarati)</button>
+                </div>
+            </div>
+
+            <button id="proceed-button" onclick="handleLanguageProceed()">
+                Proceed to ChronoTune App 🚀
+            </button>
+        </div>
+    </section>
+
+    <div id="app-wrapper" class="hidden">
+        <header>
+            <div class="app-nav-bar">
+                <div id="menu-button" class="nav-item" onclick="openMenuModal()">
+                    <i class="fas fa-bars"></i> Menu
+                </div>
+
+                <div class="header-search-container">
+                    <input type="text" id="search-input" placeholder="Search YouTube for a song/artist...">
+                    <button id="search-button" onclick="performVideoSearch()" title="Search Videos">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+
+                <div id="premium-button" class="nav-item" onclick="openPremiumModal()" style="font-weight: bold; color: #f1c40f;">
+                    PREMIUM ✨
+                </div>
+            </div>
+
+            <div id="header-info">
+                 <h1 style="margin: 0;">ChronoTune AI 🤖🎶</h1>
+                 <p id="header-user-message" style="margin: 5px 0 0;">Your mood is detected in *real-time* using your camera's video feed.</p>
+                 <button id="logout-button" onclick="handleLogout()">Logout 🚪</button>
+            </div>
+        </header>
+
+        <main id="app-main">
+            <section id="detection-area">
+                <h2>1. Look at the Camera</h2>
+                <div id="video-container">
+                    <video id="video-stream" width="500" height="350" muted playsinline></video>
+                    <canvas id="detection-canvas" width="500" height="350"></canvas>
+                </div>
+                <p id="loading-status">Loading machine learning models... (approx 5MB)</p>
+                <p style="font-size: 0.9em; margin-top: 5px;"><span id="last-update-time"></span></p>
+            </section>
+
+            <hr>
+
+            <section id="recommendation-results">
+                <h2>2. Live Recommendation for: <span id="current-emotion">Awaiting Input...</span></h2>
+
+                <div class="emotion-select-container" aria-hidden="false">
+                    <select id="emotion-select" class="emotion-select" title="Pick a mood to play matching songs">
+                        <option value="" selected>🎭 Choose mood manually...</option>
+                        <option value="happy">😄 Happy</option>
+                        <option value="sad">😢 Sad</option>
+                        <option value="angry">😡 Angry</option>
+                        <option value="surprised">😲 Surprised</option>
+                        <option value="neutral">😐 Neutral</option>
+                        <option value="fearful">😨 Fearful</option>
+                        <option value="disgusted">🤢 Disgusted</option>
+                    </select>
+                    <button class="play-mood-btn" id="play-mood-btn" onclick="playMoodSelection()">Play Mood</button>
+                    <button id="resume-detection-btn" class="resume-detect-btn hidden" onclick="resumeFaceDetection()">Resume Detection</button>
+                </div>
+
+                <div id="results-container">
+                    <p>Wait for the models to load and ensure your face is clearly visible.</p>
+                </div>
+            </section>
+        </main>
+
+        <div class="bottom-feature-bar">
+            <div class="feature-button" onclick="openHistoryModal()">
+                <i class="fas fa-history"></i> History
+            </div>
+            <div class="feature-button" onclick="alert('Starting Download... (Mock)')">
+                <i class="fas fa-download"></i> Download
+            </div>
+            <div class="feature-button" onclick="performVideoSearch()">
+                 <i class="fab fa-youtube"></i> YouTube
+            </div>
+             <div class="feature-button" onclick="alert('Checking for updates... (Mock)')">
+                <i class="fas fa-sync-alt"></i> Update
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2025 ChronoTune AI. Powered by face-api.js.</p>
+        </footer>
+    </div>
+
+    <div id="menu-modal" class="modal hidden" onclick="if (event.target.id === 'menu-modal') closeModal('menu-modal')">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal('menu-modal')">&times;</span>
+            <h3>App Menu</h3>
+            <div class="menu-item" onclick="openProfileModal()">
+                <i class="fas fa-user-circle"></i> Profile
+            </div>
+            <div class="menu-item" onclick="openHistoryModal()">
+                <i class="fas fa-history"></i> History
+            </div>
+             <div class="menu-item" onclick="closeModal('menu-modal'); showLanguageSelection(userName)">
+                <i class="fas fa-language"></i> Languages
+            </div>
+             <div class="menu-item" onclick="alert('Last Login: ' + new Date().toLocaleString())">
+                <i class="fas fa-door-open"></i> Last Logout Info
+            </div>
+        </div>
+    </div>
+
+    <div id="premium-modal" class="modal hidden" onclick="if (event.target.id === 'premium-modal') closeModal('premium-modal')">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal('premium-modal')">&times;</span>
+            <h3>Upgrade to Premium ✨</h3>
+            <p>Unlock high-quality audio, unlimited skips, and ad-free experience!</p>
+
+            <div id="plan-selection-step">
+                <div class="plan-card" data-price="49" data-duration="1 Month" onclick="selectPlan(this)">
+                    <h4>₹ 49 / Month</h4>
+                    <p>Standard monthly subscription.</p>
+                </div>
+                <div class="plan-card" data-price="249" data-duration="6 Months" onclick="selectPlan(this)">
+                    <h4>₹ 249 / 6 Months</h4>
+                    <p>Save 15% - Best value!</p>
+                </div>
+                <div class="plan-card" data-price="499" data-duration="1 Year" onclick="selectPlan(this)">
+                    <h4>₹ 499 / Year</h4>
+                    <p>Save 20% - Ultimate savings!</p>
+                </div>
+                <button id="premium-cta" disabled onclick="showPaymentMethods()">
+                    Select a Plan to Proceed
+                </button>
+
+                <button id="cancel-premium-btn" class="cancel-premium-btn" onclick="cancelPremium()">Cancel Premium</button>
+            </div>
+
+            <div id="payment-selection-step" class="hidden">
+                <div id="payment-details">
+                    <p>Plan: <strong id="current-plan-duration"></strong></p>
+                    <p>Amount: <strong id="current-plan-price"></strong></p>
+                </div>
+
+                <h4>Choose Payment Method</h4>
+                <div class="payment-method-grid">
+                    <button id="phonepe-pay" class="payment-button" onclick="processPayment('PhonePe', selectedPlan?.price || 0)">
+                        <i class="fas fa-mobile-alt"></i> Pay with PhonePe
+                    </button>
+                    <button id="gpay-pay" class="payment-button" onclick="processPayment('GPay', selectedPlan?.price || 0)">
+                        <i class="fas fa-google"></i> Pay with GPay
+                    </button>
+                    <button id="paytm-pay" class="payment-button" onclick="processPayment('PayTM', selectedPlan?.price || 0)">
+                        <i class="fas fa-wallet"></i> Pay with PayTM
+                    </button>
+                </div>
+
+                <button id="cancel-premium-btn-2" class="cancel-premium-btn" onclick="cancelPremium()">Cancel Premium</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="history-modal" class="modal hidden" onclick="if (event.target.id === 'history-modal') closeModal('history-modal')">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal('history-modal')">&times;</span>
+            <h3>Play History</h3>
+            <div id="history-container">
+                <div id="history-empty" style="color:#7f8c8d;margin-top:8px;">No history yet.</div>
+                <div id="history-list" style="display:flex;flex-direction:column;gap:8px;margin-top:12px;"></div>
+                <div id="history-controls" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+                    <button style="background:#e74c3c;color:white;padding:8px 12px;border-radius:8px;border:none;font-weight:700;" onclick="deleteSelectedHistory()">Delete Selected</button>
+                    <button style="background:transparent;border:1px solid #ccc;padding:8px 12px;border-radius:8px;" onclick="clearHistory()">Clear All</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="modal hidden" onclick="if (event.target.id === 'profile-modal') closeModal('profile-modal')">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal('profile-modal')">&times;</span>
+            <h3>Profile</h3>
+            <div id="profile-content" style="margin-top:12px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- YOUTUBE DATABASE ---
+        const youtubeDatabase = {
+            happy: [
+                { title: "Don't Stop Me Now", artist: "Queen", link: "https://youtu.be/RldAVzPGMuA?si=8JBmATHGvwfXiIO7", vibe: "Uplifting Rock Anthem", genre: "Rock", platform: "youtube" },
+                { title: "once upon a time", artist: "ravichandea", link: "https://youtu.be/hj_0Jd61XFI?si=FCzQgUAUp0kAXfhx", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "yare neenu roja hoove", artist: "ravichandra", link: "https://youtu.be/a8zRxwl0-3k?si=t-uwkBecGAEFKY3-", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "geethanjali", artist: "shankar nag", link: "https://youtu.be/56ul0WJ15TY?si=XEW2rsl06FlLAi-F", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "Tujh Mein Rab Dikhta Hai Song", artist: "srk", link: "https://youtu.be/qoq8B8ThgEM?si=mCOsZLcF-4XvMIEW", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "ragupathi ragava raja ram", artist: "Hrithik Roshan, Priyanka Chopra", link: "https://youtu.be/UVWB9UHpXzY?si=HsWkCvLPp-ge_eye", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "Pyaar Hota Kayi Baar Hai", artist: "ranbir", link: "https://youtu.be/2yeRRm9AIxI?si=wXoIB3AUkMBhxFF1", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "milana", artist: "puneeth", link: "https://youtu.be/Ei_syfExf6Q?si=PLmUiGik9SnHGwee", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "Gaali pata", artist: "Ganesh", link: "https://youtu.be/HfNtBJSkprk?si=XYJEiK471NKlR7dX", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "mugaru male", artist: "ganesh", link: "https://youtu.be/PvLXLA8Dsns?si=QO_dtdcyM5Hpnq5f", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "lifeu ishtene", artist: "Diganth", link: "https://youtu.be/gCyW7lFXR_A?si=m3DGGrrBtOzDv9b-", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "Nagutha nagutha baalu", artist: "Raj kumar", link: "https://youtu.be/O-C2QsMecSA?si=3jUStGpgf8PhTmyK", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "Gaja", artist: "Darshan", link: "https://youtu.be/ce_8oho9AaA?si=Tm0xhk6MbUYCyCzS", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+                { title: "play list", artist: "play list", link: "https://youtube.com/playlist?list=PLR5dDxgM8aezCFwibqm4ZJZuPydXsttXy&si=iZJvXq2VD_wmX0bd", vibe: "Soulful Groove", genre: "Soul", platform: "youtube" },
+
+            ],
+            sad: [
+                { title: "Bisilu Kudreyondu", artist: "yash", link: "https://youtu.be/N4GFIkcp5Wo?si=znZT6UQqnWpWDShL", vibe: "Reflective and Melancholy", genre: "Folk", platform: "youtube" },
+                { title: "karma", artist: "Rishab shetty", link: "https://youtu.be/HquoQgu3ep4?si=RwQl_e4hP6IWOciQ", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "The Hymn Of Dharma", artist: "Rakshit shetty", link: "https://youtu.be/PubWT2Eg51w?si=NtuUrhk5A8yL1d8a", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "Saagaradha song", artist: "punith raj kumar", link: "https://youtu.be/3WT2yGrWKoc?si=dg02nSkn1MG9I3F1", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "o manase", artist: "Darshan", link: "https://youtu.be/Dzf3_uk841Y?si=R-hgFP8Yr6n658yU", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "Male", artist: "prem", link: "https://youtu.be/t5rhX38SRwk?si=EQ6OGELIIHZX5W3P", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "Love mocktil", artist: "Krishna", link: "https://youtu.be/7llPi3k-yQs?si=h_xa0bj3zY9ym_Ii", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "Bisulu kudure", artist: "Yash", link: "https://youtu.be/N4GFIkcp5Wo?si=GvIpmErQm7_js-T1", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "Ugram", artist: "shree murulir", link: "https://youtu.be/p757ritUBwY?si=VqBL6C5WLTTs2_-p", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "Chigari", artist: "Darshan", link: "https://youtu.be/88LrFIj1jsU?si=XeL2wvehG87W5CGU", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },
+                { title: "Hudugaru", artist: "punith raj kumar", link: "https://youtu.be/9chuEZPpGk0?si=jeCiTGHUawJJE-iZ", vibe: "Classic Ballad", genre: "Rock", platform: "youtube" },            ],
+            angry: [
+                { title: "neecha sullu Sutho Naalige", artist: "Rakshit sheety", link: "https://youtu.be/Ug9A82D8bqE?si=lIhwPQGs--W9HRUo", vibe: "Aggressive Political Rock", genre: "Metal", platform: "youtube" },
+                { title: "jaago re jaago", artist: "yash", link: "https://youtu.be/2KHO1a7YfJQ?si=cJR1ysNei8tAPfBv", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "ANIMAL: Saari Duniya Jalaa Denge", artist: "ranbir", link: "https://youtu.be/6DfaBq2rVoE?si=bClgefV60HoMMKyx", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "Adangaatha Asuran", artist: "Dhanush", link: "https://youtu.be/gk6Jri1kGTs?si=GfQtJsMZxbtyzPoO", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "pailwan", artist: "sudeep", link: "https://youtu.be/ZuS8dpyuVEA?si=wkn14vXp8Zm02AP2", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "Bazzar", artist: "Dhanush", link: "https://youtu.be/_6ztQeqaB3w?si=wEg_pSPxxrmVOvC7", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "Ugram", artist:"shree murulir", link: "https://youtu.be/hpWksXyK7OQ?si=V5F-oPy7O81SRZBo", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "Tagaru", artist: "Shivanna", link: "https://youtu.be/RO877qFvKG8?si=Ty3JygFEIoWssmJP", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "Di vilan", artist: "suddep", link: "https://youtu.be/zmNQjXoKHp0?si=crst3ZcLPcA_Ei92", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+                { title: "maptthi", artist: "shivaraj", link: "https://youtu.be/KxZjHMsD5Uo?si=eWB12uK-46M3ZRzn", vibe: "Driving Garage Rock", genre: "Rock", platform: "youtube" },
+            ],
+            neutral: [
+                { title: "Baarem baare", artist: "Darshan", link: "https://youtu.be/x3HsYmzIrKw?si=iXkZeau-GsCELpTk", vibe: "The Most Relaxing Song Ever", genre: "Ambient", platform: "youtube" },
+                { title: "Tele phone", artist: "Ramesh", link: "https://youtu.be/PRJf86JbmlE?si=FlmJe4ZKIs50wiJo", vibe: "Calm Background Noise", genre: "Lo-Fi", platform: "youtube" },
+                { title: "Aa modadinda", artist: "Darshan", link: "https://youtu.be/LbrJZgyqp5w?si=Th3xVwOruJdCXZkS", vibe: "Calm Background Noise", genre: "Lo-Fi", platform: "youtube" },
+                { title: "Avathara purusha", artist: "Rakshith shetty", link: "https://youtu.be/C3jlOlzSL8I?si=oaMv2kmKiM7AZecl", vibe: "Calm Background Noise", genre: "Lo-Fi", platform: "youtube" },
+                { title: "kirik party", artist: "rakshith", link: "https://youtu.be/qH2CAvdMxS4?si=uDY9eM_aYr2JQVCK", vibe: "Calm Background Noise", genre: "Lo-Fi", platform: "youtube" },
+                { title: "paramathmaa", artist: "puneeth", link: "https://youtu.be/AJ59Vgzuda0?si=G9ECy8FjGnAFnSnb", vibe: "Calm Background Noise", genre: "Lo-Fi", platform: "youtube" },
+                { title: "adebhumi ade bhanu", artist: "vishnu vardhan", link: "https://youtu.be/0Ll_ctnkRqI?si=TiRcyxFxuqou9hEB", vibe: "Calm Background Noise", genre: "Lo-Fi", platform: "youtube" },
+                { title: "gaja", artist: "Dharashan", link: "https://youtu.be/GtT7cyZsU_M?si=0s8FKHfp5XZ6njfz", vibe: "Calm Background Noise", genre: "Lo-Fi", platform: "youtube" },
+            ],
+            surprised: [
+                { title: "o geethanjalli", artist: "shakarnag", link: "https://youtu.be/56ul0WJ15TY?si=Q6fdGIDvkTEwOrZ7", vibe: "Unexpected Vocal Shifts", genre: "Rock", platform: "youtube" },
+                { title: "neen metida ", artist: "vishnuvardhan", link: "https://youtu.be/kmQ3af5Nmik?si=ZvJCAKMDN3QUYY3h", vibe: "Dramatic and Intense Score", genre: "Score", platform: "youtube" },
+                { title: "Nagu nayana ", artist: "pallavi", link: "https://youtu.be/AJSeaFthdeE?si=rDQi27AgJ4-8s583", vibe: "Dramatic and Intense Score", genre: "Score", platform: "youtube" },
+                { title: "Endendigu ", artist: "vijay", link: "https://youtu.be/NALVeW-ZKAI?si=QTHQDiqeStoQtKjl", vibe: "Dramatic and Intense Score", genre: "Score", platform: "youtube" },
+            ],
+            fearful: [
+                { title: "Thangalliyalli", artist: "anathnag", link: "https://youtu.be/oI8JTyg2BMw?si=Ec-UUMbb85WBPwRF", vibe: "Suspenseful Orchestral", genre: "Score", platform: "youtube" },
+                { title: "nagavalli", artist: "vishnuvardhan", link: "https://youtu.be/ReeQgwpRO88?si=v0nArBnJBFw9yGTPF", vibe: "Suspenseful Orchestral", genre: "Score", platform: "youtube" },
+                { title: "Bandhalu", artist: "upendra", link: "https://youtu.be/GM3KGzSPf5Y?si=IIMQJAh1sGhJwNxD", vibe: "Suspenseful Orchestral", genre: "Score", platform: "youtube" },
+                { title: "Arundathi", artist: "telgu", link: "https://youtu.be/JbsX2H03MXI?si=5Ad7ak9SGVnIrLO3", vibe: "Suspenseful Orchestral", genre: "Score", platform: "youtube" }
+               
+
+                
+            ],
+            disgusted: [
+                { title: "Anishuthide", artist: "Ganesh", link: "https://youtu.be/Q8Q_D77dgzk?si=Ar50J6OgwgYRs_HW", vibe: "Psychedelic and Unsettling", genre: "Psychedelic", platform: "youtube" },
+                { title: "Mosagathi", artist: "varun", link: "https://youtu.be/y6egDaXihQU?si=uYCqeGSCpNV0JmCQ", vibe: "Psychedelic and Unsettling", genre: "Psychedelic", platform: "youtube" },
+                { title: "vaasu naan", artist: "Anish", link: "https://youtu.be/efrZNq1hyBU?si=DcPKK3QxOpbpMbMa", vibe: "Psychedelic and Unsettling", genre: "Psychedelic", platform: "youtube" } 
+            ],
+        };
+
+        // --- SPOTIFY DATABASE ---
+        const spotifyDatabase = {
+            happy: [
+                { title: "Walking on Sunshine", artist: "Katrina & The Waves", spotifyId: "https://open.spotify.com/track/2nhl98yAm1lKLy6tPZ184Q?si=ce1c9d84a23e4c15", vibe: "Pure Joy", genre: "Pop", platform: "spotify" },
+               
+            ],
+            sad: [
+                { title: "Skinny Love", artist: "Bon Iver", spotifyId: "spotify:track:1ZNfxYiPiHvKlIJZW8XvR7", vibe: "Melancholic", genre: "Indie Folk", platform: "spotify" },
+               
+            ],
+            angry: [
+                { title: "Killing in the Name", artist: "Rage Against the Machine", spotifyId: "spotify:track:4cOdK2wGLETKBW3PvgPWqV", vibe: "Pure Rage", genre: "Metal", platform: "spotify" },
+                
+            ],
+            neutral: [
+                { title: "Meditation", artist: "Ambient Records", spotifyId: "spotify:track:63FxFXHQMaGU8m2DqVY7iB", vibe: "Peaceful", genre: "Ambient", platform: "spotify" },
+                
+            ],
+            surprised: [
+                { title: "What's Up", artist: "4 Non Blondes", spotifyId: "spotify:track:2WfKCsqJVwjE5TqxEHcJWt", vibe: "Uplifting", genre: "Rock", platform: "spotify" },
+                
+            ],
+            fearful: [
+                { title: "Scary Movie", artist: "Weird Al Yankovic", spotifyId: "spotify:track:7jMhz4fZhNAh37vU5rCVNd", vibe: "Eerie", genre: "Comedy", platform: "spotify" },
+                
+            ],
+            disgusted: [
+                { title: "Eww", artist: "Various Artists", spotifyId: "spotify:track:13gL4FkWRRVkQMWYdWkHGb", vibe: "Unsettling", genre: "Alternative", platform: "spotify" },
+            ]
+        };
+
+        // --- COMBINED DATABASE (for getRandomSong) ---
+        const musicDatabase = {};
+        for (const emotion in youtubeDatabase) {
+            musicDatabase[emotion] = [...youtubeDatabase[emotion], ...spotifyDatabase[emotion]];
+        }
+
+        const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+        const video = document.getElementById('video-stream');
+        const canvas = document.getElementById('detection-canvas');
+        const statusDisplay = document.getElementById('loading-status');
+        const emotionDisplay = document.getElementById('current-emotion');
+        const resultsContainer = document.getElementById('results-container');
+        const lastUpdateTime = document.getElementById('last-update-time');
+        const loginPage = document.getElementById('login-page');
+        const languagePage = document.getElementById('language-selection-page');
+        const appWrapper = document.getElementById('app-wrapper');
+        const appMain = document.getElementById('app-main');
+        const headerP = document.getElementById('header-user-message');
+
+        const menuModal = document.getElementById('menu-modal');
+        const premiumModal = document.getElementById('premium-modal');
+
+        let isModelsLoaded = false;
+        let currentDetectedEmotion = '';
+        let lastRecommendedEmotion = '';
+        let selectedLanguages = [];
+        let userName = '';
+        const DETECTION_INTERVAL = 100;
+        const DAMPING_WINDOW = 15;
+        let emotionHistory = [];
+        const MIN_CONFIDENCE = 0.5;
+        let selectedPlan = null;
+        let detectionIntervalId = null;
+
+        let recommendationLocked = false;
+        let recommendationUnlockTimer = null;
+
+        const emotionSelect = document.getElementById('emotion-select');
+        const resumeBtn = document.getElementById('resume-detection-btn');
+
+        let currentUser = null;
+        let manualMode = false;
+
+        const STORAGE_USER = 'chronotune_user_v1';
+        const STORAGE_HISTORY = 'chronotune_history_v1';
+
+        function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+        // --- STORAGE HELPERS ---
+        function saveUser(user) {
+            if (!user) {
+                localStorage.removeItem(STORAGE_USER);
+                return;
+            }
+            try {
+                localStorage.setItem(STORAGE_USER, JSON.stringify(user));
+            } catch (e) {
+                console.error('Error saving user to localStorage:', e);
+            }
+        }
+
+        function loadUser() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_USER));
+            } catch (e) {
+                console.error('Error loading user from localStorage:', e);
+                return null;
+            }
+        }
+
+        function getHistory() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_HISTORY) || '[]');
+            } catch (e) {
+                console.error('Error loading history from localStorage:', e);
+                return [];
+            }
+        }
+
+        function saveHistory(history) {
+            try {
+                localStorage.setItem(STORAGE_HISTORY, JSON.stringify(history || []));
+            } catch (e) {
+                console.error('Error saving history to localStorage:', e);
+            }
+        }
+
+        function addHistoryEntry(song, emotion) {
+            const history = getHistory();
+            const entry = {
+                song: {
+                    title: song.title,
+                    artist: song.artist,
+                    link: song.link || song.spotifyId,
+                    genre: song.genre,
+                    vibe: song.vibe,
+                    platform: song.platform
+                },
+                emotion,
+                when: new Date().toISOString()
+            };
+            history.unshift(entry);
+            saveHistory(history.slice(0, 200)); // Limit history to 200 entries
+        }
+
+        // --- LOGIN ---
+        async function handleGoogleLogin() {
+            const name = prompt('Google Sign-in (mock) - Your full name:', 'Google User');
+            if (!name) return;
+            const email = prompt('Google Sign-in (mock) - Email:', 'user@gmail.com');
+            if (!email) return;
+
+            currentUser = {
+                name,
+                email,
+                provider: 'Google',
+                lastLogin: new Date().toISOString()
+            };
+            saveUser(currentUser);
+            userName = currentUser.name;
+            headerP.innerHTML = `Welcome back, <strong>${userName}</strong>! Your mood is detected in <strong>real-time</strong> using your camera's video feed.`;
+            alert('Google sign-in successful (mock)');
+            await delay(300);
+            showLanguageSelection(userName);
+        }
+
+        async function handleFacebookLogin() {
+            const name = prompt('Facebook Sign-in (mock) - Your full name:', 'Facebook User');
+            if (!name) return;
+            const email = prompt('Facebook Sign-in (mock) - Email:', 'user@facebook.com');
+            if (!email) return;
+
+            currentUser = {
+                name,
+                email,
+                provider: 'Facebook',
+                lastLogin: new Date().toISOString()
+            };
+            saveUser(currentUser);
+            userName = currentUser.name;
+            headerP.innerHTML = `Welcome back, <strong>${userName}</strong>! Your mood is detected in <strong>real-time</strong> using your camera's video feed.`;
+            alert('Facebook sign-in successful (mock)');
+            await delay(300);
+            showLanguageSelection(userName);
+        }
+
+        async function handlePhoneLogin() {
+            const phoneNumber = prompt("Please enter your 10-digit phone number:");
+            if (phoneNumber && phoneNumber.length >= 10 && !isNaN(phoneNumber)) {
+                alert(`Sending verification code to ${phoneNumber}...`);
+                await delay(1500);
+                const otp = prompt("Enter the 4-digit verification code (Mock code is 1234):");
+
+                if (otp === '1234') {
+                    userName = `Phone User (${phoneNumber.slice(-4)})`;
+                    currentUser = { name: userName, email: '', provider: 'Phone', lastLogin: new Date().toISOString() };
+                    saveUser(currentUser);
+                    alert("Verification successful! Login successful.");
+                    await delay(500);
+                    showLanguageSelection(userName);
+                } else {
+                    alert("Verification failed. Please try again.");
+                }
+            } else if (phoneNumber !== null) {
+                 alert("Invalid phone number format.");
+            }
+        }
+
+        // --- LANGUAGE SELECTION & APP LAUNCH ---
+        function showLanguageSelection(userStatus) {
+            userName = userStatus;
+            loginPage.classList.add('hidden');
+            languagePage.classList.remove('hidden');
+        }
+
+        function toggleLanguage(button) {
+            const lang = button.getAttribute('data-lang');
+            button.classList.toggle('selected');
+
+            if (button.classList.contains('selected')) {
+                if (!selectedLanguages.includes(lang)) {
+                    selectedLanguages.push(lang);
+                }
+            } else {
+                selectedLanguages = selectedLanguages.filter(l => l !== lang);
+            }
+        }
+
+        function handleLanguageProceed() {
+            const displayUserName = userName || (currentUser ? currentUser.name : 'Guest');
+            const userLangStr = selectedLanguages.join(', ');
+
+            if (selectedLanguages.length > 0) {
+                headerP.innerHTML = `Welcome back, <strong>${displayUserName} (Langs: ${userLangStr})</strong>! Your mood is detected in <strong>real-time</strong> using your camera's video feed.`;
+            } else {
+                headerP.innerHTML = `Welcome back, <strong>${displayUserName}</strong>! Your mood is detected in <strong>real-time</strong> using your camera's video feed.`;
+            }
+
+            languagePage.classList.add('hidden');
+            appWrapper.classList.remove('hidden');
+            appMain.classList.add('show');
+
+            loadModelsAndStartCamera();
+        }
+
+        function handleLogout() {
+            const stream = video.srcObject;
+            if (stream) { stream.getTracks().forEach(track => track.stop()); video.srcObject = null; }
+            if (canvas.getContext) { canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height); }
+            emotionDisplay.textContent = "Awaiting Input...";
+            emotionDisplay.style.color = '#7f8c8d';
+            resultsContainer.innerHTML = '<p>Wait for the models to load and ensure your face is clearly visible.</p>';
+            lastUpdateTime.textContent = '';
+            document.body.style.setProperty('--current-bg', '#f4f7f6');
+            statusDisplay.classList.remove('loaded');
+            appWrapper.classList.add('hidden');
+            appMain.classList.remove('show');
+            loginPage.classList.remove('hidden');
+            isModelsLoaded = false;
+            lastRecommendedEmotion = '';
+            emotionHistory = [];
+            selectedLanguages = [];
+            document.querySelectorAll('.lang-button').forEach(btn => btn.classList.remove('selected'));
+            closeModal('menu-modal');
+
+            if (detectionIntervalId) {
+                clearInterval(detectionIntervalId);
+                detectionIntervalId = null;
+            }
+
+            recommendationLocked = false;
+            if (recommendationUnlockTimer) { clearTimeout(recommendationUnlockTimer); recommendationUnlockTimer = null; }
+
+            currentUser = null; userName = '';
+            saveUser(null);
+        }
+
+        // --- CORE CAMERA/MODEL LOGIC ---
+        async function loadModelsAndStartCamera() {
+            if (manualMode) {
+                statusDisplay.textContent = 'Manual mode: camera paused.';
+                return;
+            }
+
+            statusDisplay.textContent = 'Loading machine learning models... (approx 5MB)';
+            try {
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+                ]);
+                isModelsLoaded = true;
+                statusDisplay.textContent = 'Models loaded successfully. Starting camera...';
+                statusDisplay.classList.add('loaded');
+                startVideoStream();
+            } catch (err) {
+                statusDisplay.textContent = `❌ Error loading models: ${err?.message || err}. Please check console.`;
+                console.error('Model Loading Error:', err);
+            }
+        }
+
+        async function startVideoStream() {
+            if (manualMode) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.muted = true;
+                video.playsInline = true;
+                await video.play();
+
+                const vw = video.videoWidth || 640;
+                const vh = video.videoHeight || 480;
+                canvas.width = vw;
+                canvas.height = vh;
+                faceapi.matchDimensions(canvas, { width: vw, height: vh });
+
+                if (detectionIntervalId) clearInterval(detectionIntervalId);
+                detectionIntervalId = setInterval(runDetection, DETECTION_INTERVAL);
+                statusDisplay.textContent = 'Camera started. Looking for a face...';
+            } catch (err) {
+                statusDisplay.textContent = `❌ Error accessing camera: ${err?.message || err}`;
+                console.error('Camera Access Error:', err);
+            }
+        }
+
+        async function runDetection() {
+            if (!isModelsLoaded) return;
+            if (manualMode) return;
+            if (video.readyState < 2) return;
+            if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+            const displaySize = { width: video.videoWidth || canvas.width, height: video.videoHeight || canvas.height };
+            let detections = null;
+            try {
+                detections = await faceapi.detectSingleFace(
+                    video,
+                    new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+                ).withFaceLandmarks().withFaceExpressions();
+            } catch (err) {
+                console.warn('Detection error:', err);
+                return;
+            }
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (detections) {
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                faceapi.draw.drawDetections(canvas, resizedDetections);
+                faceapi.draw.drawFaceExpressions(canvas, resizedDetections, 0.05);
+
+                const expressions = resizedDetections.expressions || {};
+                let bestEmotion = null;
+                let maxScore = 0;
+
+                for (const emotion in expressions) {
+                    if (expressions[emotion] > maxScore) {
+                        maxScore = expressions[emotion];
+                        bestEmotion = emotion;
+                    }
+                }
+
+                if (maxScore > MIN_CONFIDENCE && bestEmotion) {
+                    currentDetectedEmotion = bestEmotion;
+                    emotionHistory.push(bestEmotion);
+
+                    if (emotionHistory.length > DAMPING_WINDOW) { emotionHistory.shift(); }
+
+                    processRecommendationDamped(currentDetectedEmotion);
+
+                } else {
+                    emotionDisplay.textContent = "Face Detected, Confidence Low...";
+                    emotionDisplay.style.color = '#f39c12';
+                    currentDetectedEmotion = 'neutral';
+                    document.body.style.setProperty('--current-bg', '#f4f7f6');
+                }
+
+                const now = new Date();
+                lastUpdateTime.textContent = `Last mood check: ${now.toLocaleTimeString()}`;
+
+            } else {
+                emotionDisplay.textContent = "No Face Detected";
+                emotionDisplay.style.color = '#e74c3c';
+                resultsContainer.innerHTML = '<p>Please ensure your face is fully visible in the frame.</p>';
+                document.body.style.setProperty('--current-bg', '#f4f7f6');
+                currentDetectedEmotion = 'none';
+                // unlock recommendations when face is lost so next detection can trigger a new song
+                lastRecommendedEmotion = '';
+                recommendationLocked = false;
+                if (recommendationUnlockTimer) { clearTimeout(recommendationUnlockTimer); recommendationUnlockTimer = null; }
+                emotionHistory = [];
+                lastUpdateTime.textContent = '';
+            }
+        }
+
+        function processRecommendationDamped(detectedEmotion) {
+            // If already locked (we've already shown a recommendation), avoid replacing it repeatedly
+            if (recommendationLocked) {
+                // update emotion text/color but keep current recommendation
+                const displayEmotion = detectedEmotion.charAt(0).toUpperCase() + detectedEmotion.slice(1);
+                emotionDisplay.textContent = displayEmotion;
+                emotionDisplay.style.color = getEmotionColor(detectedEmotion);
+                document.body.style.setProperty('--current-bg', getLighterColor(getEmotionColor(detectedEmotion)));
+                return;
+            }
+
+            const emotionCounts = emotionHistory.reduce((acc, emo) => {
+                acc[emo] = (acc[emo] || 0) + 1;
+                return acc;
+            }, {});
+
+            let dominantEmotion = detectedEmotion;
+            let maxCount = 0;
+            for (const emo in emotionCounts) {
+                if (emotionCounts[emo] > maxCount) {
+                    maxCount = emotionCounts[emo];
+                    dominantEmotion = emo;
+                }
+            }
+
+            const stabilityThreshold = 0.7;
+            const isStable = emotionHistory.length > 0 && (maxCount / emotionHistory.length >= stabilityThreshold);
+
+            if (isStable && dominantEmotion !== lastRecommendedEmotion) {
+                const displayEmotion = dominantEmotion.charAt(0).toUpperCase() + dominantEmotion.slice(1);
+                emotionDisplay.textContent = displayEmotion;
+                emotionDisplay.style.color = getEmotionColor(dominantEmotion);
+                document.body.style.setProperty('--current-bg', getLighterColor(getEmotionColor(dominantEmotion)));
+
+                const song = getRandomSong(dominantEmotion);
+                if (song) {
+                    displayRecommendationCard(song, dominantEmotion);
+                    lastRecommendedEmotion = dominantEmotion;
+
+                    // lock further automatic recommendation changes for a cooldown period (e.g., 3 minutes)
+                    recommendationLocked = true;
+                    if (recommendationUnlockTimer) clearTimeout(recommendationUnlockTimer);
+                    recommendationUnlockTimer = setTimeout(() => {
+                        recommendationLocked = false;
+                        recommendationUnlockTimer = null;
+                    }, 3 * 60 * 1000); // 3 minutes
+
+                    document.getElementById('recommendation-results').scrollIntoView({ behavior: 'smooth' });
+                }
+            } else if (dominantEmotion === lastRecommendedEmotion) {
+                const displayEmotion = dominantEmotion.charAt(0).toUpperCase() + dominantEmotion.slice(1);
+                emotionDisplay.textContent = displayEmotion;
+                emotionDisplay.style.color = getEmotionColor(dominantEmotion);
+                document.body.style.setProperty('--current-bg', getLighterColor(getEmotionColor(dominantEmotion)));
+            }
+        }
+
+        function getRandomSong(emotionKey) {
+            const songs = musicDatabase[emotionKey];
+            if (!songs || songs.length === 0) {
+                resultsContainer.innerHTML = `<p>No songs found for ${emotionKey}.</p>`;
+                return null;
+            }
+            const randomIndex = Math.floor(Math.random() * songs.length);
+            return songs[randomIndex];
+        }
+
+        // SPOTIFY / EXTERNAL PLAY HELPERS
+        function getSpotifySearchUrl(song) {
+            const query = encodeURIComponent(`${song.title || ''} ${song.artist || ''}`.trim());
+            return `https://open.spotify.com/search/${query}`;
+        }
+
+        function openExternal(song, provider = 'youtube') {
+            if (!song) return;
+            addHistoryEntry(song, song._emotion || 'manual');
+            const url = (provider === 'spotify') ? getSpotifySearchUrl(song) : (song.link || '');
+            if (url) {
+                window.open(url, '_blank');
+            } else {
+                alert('No external link available for this song.');
+            }
+            renderHistory();
+        }
+
+        // NOTE: autoplay / inline embedding removed intentionally.
+        function displayRecommendationCard(song, emotion) {
+            // attach emotion to song for history
+            song._emotion = emotion;
+            const safeTitle = (song.title || '').replace(/'/g, "\\'");
+            const safeLink = (song.link || '').replace(/'/g, "\\'");
+            const spotifyUrl = getSpotifySearchUrl(song);
+            resultsContainer.innerHTML = `
+                <div class="song-card" style="border-left-color: ${getEmotionColor(emotion)};">
+                    <div class="song-info">
+                        <h3>${escapeHtml(song.title)} <span class="vibe-tag" style="background-color: ${getEmotionColor(emotion)};">${escapeHtml((song.genre||'').toUpperCase())}</span></h3>
+                        <p><strong>Artist:</strong> ${escapeHtml(song.artist)}</p>
+                        <p><strong>Vibe:</strong> ${escapeHtml(song.vibe)}</p>
+                    </div>
+                    <div class="song-link" style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+                        <a href="${song.link}" target="_blank" rel="noopener">Open on YouTube 🎧</a>
+                        <a href="${spotifyUrl}" target="_blank" rel="noopener" style="background:#1DB954;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700;">Play on Spotify ♫</a>
+                        <button class="play-mood-btn" onclick='openExternal(${JSON.stringify(song)}, "spotify")'>Open Spotify ▶</button>
+                    </div>
+                </div>
+                <p style="margin-top: 20px;">The song recommendation has been updated based on your sustained ${emotion.charAt(0).toUpperCase() + emotion.slice(1)} mood.</p>
+            `;
+        }
+
+        function getEmotionColor(emotion) {
+            switch (emotion) {
+                case 'happy': return '#2ecc71';
+                case 'sad': return '#3498db';
+                case 'angry': return '#e74c3c';
+                case 'neutral': return '#bdc3c7';
+                case 'surprised': return '#f1c40f';
+                case 'fearful': return '#9b59b6';
+                case 'disgusted': return '#16a085';
+                default: return '#7f8c8d';
+            }
+        }
+
+        function getLighterColor(hex) {
+            if (!hex || hex[0] !== '#') return '#f4f7f6';
+            let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+            const factor = 0.85;
+            r = Math.min(255, r + Math.round((255 - r) * factor));
+            g = Math.min(255, g + Math.round((255 - g) * factor));
+            b = Math.min(255, b + Math.round((255 - b) * factor));
+            const hexOut = ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+            return `#${hexOut.padStart(6, '0')}`;
+        }
+
+
+        // --- SEARCH FUNCTIONALITY ---
+        function performVideoSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            let finalQuery = query;
+
+            if (!finalQuery) {
+                if (currentDetectedEmotion && currentDetectedEmotion !== 'none') {
+                    finalQuery = `${currentDetectedEmotion} songs`;
+                } else {
+                    finalQuery = 'music videos';
+                }
+            }
+
+            const encodedQuery = encodeURIComponent(finalQuery);
+            const youtubeUrl = `https://www.youtube.com/results?search_query=${encodedQuery}`;
+            window.open(youtubeUrl, '_blank');
+            document.getElementById('search-input').value = '';
+        }
+
+        // --- MODAL FUNCTIONS ---
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+            if (modalId === 'premium-modal') {
+                document.getElementById('plan-selection-step').classList.remove('hidden');
+                document.getElementById('payment-selection-step').classList.add('hidden');
+                document.querySelectorAll('.plan-card').forEach(card => card.classList.remove('selected-plan'));
+                const cta = document.getElementById('premium-cta');
+                if (cta) { cta.disabled = true; cta.textContent = 'Select a Plan to Proceed'; }
+                selectedPlan = null;
+            }
+        }
+
+        function openMenuModal() {
+            openModal('menu-modal');
+        }
+
+        function openPremiumModal() {
+            openModal('premium-modal');
+        }
+
+        // --- PREMIUM FLOW LOGIC ---
+        function selectPlan(card) {
+            document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected-plan'));
+            card.classList.add('selected-plan');
+
+            selectedPlan = {
+                price: card.getAttribute('data-price'),
+                duration: card.getAttribute('data-duration')
+            };
+
+            const ctaButton = document.getElementById('premium-cta');
+            ctaButton.disabled = false;
+            ctaButton.textContent = `Proceed to Pay ₹${selectedPlan.price} for ${selectedPlan.duration}`;
+        }
+
+        function showPaymentMethods() {
+            if (!selectedPlan) {
+                alert("Please select a subscription plan first.");
+                return;
+            }
+
+            document.getElementById('plan-selection-step').classList.add('hidden');
+            document.getElementById('current-plan-duration').textContent = selectedPlan.duration;
+            document.getElementById('current-plan-price').textContent = `₹ ${selectedPlan.price}`;
+            document.getElementById('payment-selection-step').classList.remove('hidden');
+        }
+
+        async function processPayment(method, amount) {
+            closeModal('premium-modal');
+            alert(`Initiating payment of ₹${amount} using ${method}...`);
+
+            await delay(2000);
+
+            alert(`✅ Success! You have successfully subscribed to ChronoTune AI Premium for ${selectedPlan ? selectedPlan.duration : 'your selected period'}.`);
+
+            const premiumButton = document.getElementById('premium-button');
+            premiumButton.textContent = 'PREMIUM ACTIVE ✅';
+            premiumButton.style.color = '#2ecc71';
+        }
+
+        // NEW: cancel premium action
+        function cancelPremium() {
+            // simulate cancellation
+            closeModal('premium-modal');
+            // restore nav button
+            const premiumButton = document.getElementById('premium-button');
+            premiumButton.textContent = 'PREMIUM ✨';
+            premiumButton.style.color = '#f1c40f';
+            // notify user
+            alert('✅ Premium cancelled successfully.');
+        }
+
+        // NEW: play mood selection manually (stops face detection)
+        function playMoodSelection() {
+            const val = document.getElementById('emotion-select').value;
+            if (!val) {
+                alert('Please pick a mood from the dropdown first.');
+                return;
+            }
+
+            // stop automatic face detection when user manually selects
+            manualMode = true;
+            if (detectionIntervalId) {
+                clearInterval(detectionIntervalId);
+                detectionIntervalId = null;
+            }
+            if (video.srcObject) {
+                try {
+                    video.srcObject.getTracks().forEach(t => t.stop());
+                } catch (e) {}
+                video.srcObject = null;
+            }
+            resumeBtn.classList.remove('hidden');
+
+            const song = getRandomSong(val);
+            if (!song) {
+                alert('No song available for that mood.');
+                return;
+            }
+
+            // update UI and show card (Spotify/YouTube links provided)
+            const displayEmotion = val.charAt(0).toUpperCase() + val.slice(1);
+            emotionDisplay.textContent = displayEmotion;
+            emotionDisplay.style.color = getEmotionColor(val);
+            document.body.style.setProperty('--current-bg', getLighterColor(getEmotionColor(val)));
+
+            // Play Spotify song if available
+            if (song.platform === 'spotify') {
+                autoPlaySpotifySong(val);
+            } else {
+                displayRecommendationCard(song, val);
+            }
+
+            // short cooldown only
+            recommendationLocked = true;
+            if (recommendationUnlockTimer) clearTimeout(recommendationUnlockTimer);
+            recommendationUnlockTimer = setTimeout(() => {
+                recommendationLocked = false;
+                recommendationUnlockTimer = null;
+            }, 30 * 1000); // 30s
+        }
+
+        // --- AUTO-PLAY SPOTIFY SONG ---
+        function autoPlaySpotifySong(emotion) {
+            if (!emotion || emotion === 'none') {
+                console.warn('No valid emotion detected for Spotify auto-play.');
+                return;
+            }
+
+            const song = getRandomSong(emotion);
+            if (song && song.platform === 'spotify') {
+                const spotifyUrl = `https://open.spotify.com/embed/track/${song.spotifyId.split(':').pop()}?utm_source=generator&theme=0`;
+
+                const spotifyContainer = document.createElement('div');
+                spotifyContainer.id = 'spotify-song-container';
+                spotifyContainer.style.position = 'fixed';
+                spotifyContainer.style.bottom = '10px';
+                spotifyContainer.style.left = '10px';
+                spotifyContainer.style.width = '300px';
+                spotifyContainer.style.height = '80px';
+                spotifyContainer.style.zIndex = '1000';
+                spotifyContainer.style.border = '2px solid #1DB954';
+                spotifyContainer.style.borderRadius = '8px';
+                spotifyContainer.style.overflow = 'hidden';
+                spotifyContainer.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+                spotifyContainer.style.backgroundColor = '#000';
+
+                const iframe = document.createElement('iframe');
+                iframe.src = spotifyUrl;
+                iframe.width = '100%';
+                iframe.height = '100%';
+                iframe.frameBorder = '0';
+                iframe.allow = 'encrypted-media';
+
+                spotifyContainer.appendChild(iframe);
+
+                // Remove existing Spotify container if present
+                const existingContainer = document.getElementById('spotify-song-container');
+                if (existingContainer) {
+                    existingContainer.remove();
+                }
+
+                document.body.appendChild(spotifyContainer);
+
+                // Auto-remove the Spotify player after 3 minutes
+                setTimeout(() => {
+                    if (spotifyContainer.parentNode) {
+                        spotifyContainer.parentNode.removeChild(spotifyContainer);
+                    }
+                }, 3 * 60 * 1000); // 3 minutes
+            } else {
+                console.warn('No Spotify song found for the detected emotion:', emotion);
+            }
+        }
+
+        // resume detection when user clicks resume
+        async function resumeFaceDetection() {
+            manualMode = false;
+            resumeBtn.classList.add('hidden');
+            // reload models if needed and start camera
+            await loadModelsAndStartCamera();
+        }
+
+        // --- HISTORY / PROFILE functions ---
+        function openHistoryModal() {
+            renderHistory();
+            openModal('history-modal');
+        }
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            const empty = document.getElementById('history-empty');
+            const h = getHistory();
+            list.innerHTML = '';
+            if (!h.length) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            h.forEach((entry, idx) => {
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                div.style.padding = '8px';
+                div.style.borderRadius = '6px';
+                div.style.background = '#fafafa';
+                div.innerHTML = `
+                    <div style="display:flex;gap:10px;align-items:center;">
+                      <input type="checkbox" data-idx="${idx}">
+                      <div>
+                        <div style="font-weight:700;">${escapeHtml(entry.song.title || entry.song.link)}</div>
+                        <div style="font-size:0.85rem;color:#666;">${escapeHtml(entry.song.artist || '')} • ${capitalize(entry.emotion || '')} • ${new Date(entry.when).toLocaleString()}</div>
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                      <button style="background:#1DB954;color:#fff;padding:6px 8px;border-radius:6px;border:none;" onclick='openExternal(${JSON.stringify(entry.song)}, "spotify")'><i class="fas fa-compact-disc"></i></button>
+                      <button style="background:#2980b9;color:#fff;padding:6px 8px;border-radius:6px;border:none;" onclick='openExternal(${JSON.stringify(entry.song)}, "youtube")'><i class="fas fa-play"></i></button>
+                      <button style="background:transparent;border:1px solid #ccc;padding:6px 8px;border-radius:6px;" onclick="deleteHistoryAt(${idx})">Delete</button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function deleteHistoryAt(i) {
+            const h = getHistory();
+            if (i < 0 || i >= h.length) return;
+            h.splice(i,1);
+            saveHistory(h);
+            renderHistory();
+        }
+        function deleteSelectedHistory() {
+            const checks = Array.from(document.querySelectorAll('#history-list input[type="checkbox"]'));
+            const idxs = checks.filter(c => c.checked).map(c => Number(c.getAttribute('data-idx'))).sort((a,b)=>b-a);
+            if (!idxs.length) { alert('Select at least one entry'); return; }
+            const h = getHistory();
+            for (const i of idxs) { if (i>=0 && i<h.length) h.splice(i,1); }
+            saveHistory(h);
+            renderHistory();
+        }
+        function clearHistory() {
+            if (!confirm('Clear all history?')) return;
+            saveHistory([]);
+            renderHistory();
+        }
+
+        function openProfileModal() {
+            const el = document.getElementById('profile-content');
+            if (!currentUser) {
+                el.innerHTML = `<p>No user signed in.</p><div style="display:flex;gap:8px;margin-top:8px;">
+                    <button style="background:#dd4b39;color:#fff;padding:8px 10px;border-radius:6px;border:none;" onclick="handleGoogleLogin()">Sign in with Google</button>
+                    <button style="background:#3b5998;color:#fff;padding:8px 10px;border-radius:6px;border:none;" onclick="handleFacebookLogin()">Sign in with Facebook</button>
+                </div>`;
+            } else {
+                el.innerHTML = `<div style="display:flex;gap:12px;align-items:center;">
+                    <div style="width:64px;height:64px;border-radius:50%;background:${stringToColor(currentUser.email||currentUser.name)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;">${(currentUser.name||'U').split(' ').map(s=>s[0]).slice(0,2).join('')}</div>
+                    <div>
+                      <div style="font-weight:800;">${escapeHtml(currentUser.name)}</div>
+                      <div style="color:#666;">${escapeHtml(currentUser.email||'')}</div>
+                      <div style="color:#999;">Provider: ${escapeHtml(currentUser.provider||'')}</div>
+                      <div style="color:#999;font-size:0.85rem;">Last login: ${new Date(currentUser.lastLogin||Date.now()).toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <div style="margin-top:12px;display:flex;gap:8px;">
+                    <button style="background:#e74c3c;color:#fff;padding:8px 10px;border-radius:6px;border:none;" onclick="signOut()">Sign out</button>
+                    <button style="background:#ccc;padding:8px 10px;border-radius:6px;border:none;" onclick="closeModal('profile-modal')">Close</button>
+                  </div>`;
+            }
+            openModal('profile-modal');
+        }
+
+        function signOut() {
+            if (!confirm('Sign out?')) return;
+            currentUser = null; userName = '';
+            saveUser(null);
+            headerP.innerHTML = 'You are signed out.';
+            closeModal('profile-modal');
+            alert('Signed out.');
+        }
+
+        // --- UTILS ---
+
+        function capitalize(s) {
+            if (!s) return '';
+            return s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"]+/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+        }
+
+        function stringToColor(str) {
+            let h = 0;
+            for (let i = 0; i < (str || '').length; i++) {
+                h = str.charCodeAt(i) + ((h << 5) - h);
+            }
+            return `hsl(${Math.abs(h) % 360} 60% 45%)`;
+        }
+
+        // Initialize the login page on document load and restore user & history
+        document.addEventListener('DOMContentLoaded', () => {
+            // restore user if present
+            const stored = loadUser();
+            if (stored) { currentUser = stored; userName = stored.name; headerP.innerHTML = `Welcome back, <strong>${userName}</strong>! Your mood is detected in <strong>real-time</strong> using your camera’s video feed.`; }
+            appWrapper.classList.add('hidden');
+            languagePage.classList.add('hidden');
+            loginPage.classList.remove('hidden');
+            // hide resume button initially
+            if (resumeBtn) resumeBtn.classList.add('hidden');
+        });
+    </script>
+    </body>
+</html>
